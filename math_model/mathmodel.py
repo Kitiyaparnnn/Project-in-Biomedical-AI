@@ -380,5 +380,5 @@ def main(image_path):
 
 if __name__ == "__main__":
     # Example usage
-    image_path = "sample.jpg"  # Replace with your PNG file path
+    image_path = "/sample_JPGs/40002816/20220531/100000/R/OCT/Carl_Zeiss_Meditec_CIRRUS_HD-OCT_5000(200x1024x200)/Original/ORG_IMG_JPG/40002816_20220531_100000_R_OCT_200x1024x200_ORG_IMG_JPG_0095.jpg"  # Replace with your PNG file path
     main(image_path)
