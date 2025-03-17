@@ -1,4 +1,5 @@
 import os
+import pickle
 import random
 import time
 from glob import glob
@@ -103,6 +104,7 @@ def locate_retina_region(image):
 
     return top_row, bottom_row
 
+
 def segment_retinal_layers(image):
     """
     Segment ILM layer from the OCT image
@@ -155,6 +157,7 @@ def segment_retinal_layers(image):
 
     return ilm_line
 
+
 def visualize_results(oct_image, ilm_line, save_path=None):
     """
     Visualize the results of ILM detection
@@ -183,6 +186,8 @@ def visualize_results(oct_image, ilm_line, save_path=None):
         print(f"Results saved to '{save_path}'")
 
     plt.close(fig)
+
+
 def process_multiple_images(image_paths, output_dir, classifications):
     """
     Process multiple OCT images and detect ILM in each
@@ -200,7 +205,7 @@ def process_multiple_images(image_paths, output_dir, classifications):
     print(f"Processing {len(image_paths)} images...")
 
     for i, image_path in enumerate(image_paths):
-        print(f"\nProcessing image {i+1}/{len(image_paths)}: {os.path.basename(image_path)}")
+        print(f"\nProcessing image {i + 1}/{len(image_paths)}: {os.path.basename(image_path)}")
         try:
             # Load and preprocess the image
             oct_image = load_oct_image(image_path)
@@ -238,6 +243,7 @@ def process_multiple_images(image_paths, output_dir, classifications):
 
     return results
 
+
 def get_all_file_names(path):
     try:
         # Get the list of all files in the directory
@@ -253,7 +259,9 @@ def get_all_file_names(path):
     except PermissionError:
         print(f"Error: Permission denied to access '{path}'.")
         return []
-def prepare_data(results, test_size=0.2):
+
+
+def prepare_data(results, test_size=0.22):
     X = []
     y = []
     for result in results:
@@ -276,6 +284,8 @@ def prepare_data(results, test_size=0.2):
     y_train, y_test = y[train_indices], y[test_indices]
 
     return X_train, X_test, y_train, y_test
+
+
 def train_model(X_train, X_test, y_train, y_test):
     # Create and train the model
     model = RandomForestClassifier(n_estimators=100, random_state=42)
@@ -291,7 +301,53 @@ def train_model(X_train, X_test, y_train, y_test):
     report = classification_report(y_test, y_pred)
 
     return model, accuracy, report
-def main(folder1, folder2, pattern="*.jpg"):
+
+
+def save_model(model, filename):
+    """
+    Save the trained model to a file
+
+    Args:
+        model: Trained model object
+        filename: Name of the file to save the model
+    """
+    with open(filename, 'wb') as file:
+        pickle.dump(model, file)
+    print(f"Model saved to {filename}")
+def predict_image(model, image_path, output_dir):
+    """
+    Predict the class of an OCT image using the trained model.
+
+    Args:
+        model: Trained model object.
+        image_path: Path to the OCT image file.
+        output_dir: Directory to save processed results.
+    """
+    try:
+        # Load and preprocess the image
+        oct_image = load_oct_image(image_path)  # Function from your script
+        preprocessed_image = preprocess_oct_image(oct_image)  # Function from your script
+
+        # Segment ILM layer (or other features)
+        ilm_line = segment_retinal_layers(preprocessed_image)  # Function from your script
+
+        # Predict class using the trained model
+        ilm_line_reshaped = np.expand_dims(ilm_line, axis=0)  # Reshape if necessary
+        predicted_class = model.predict(ilm_line_reshaped)[0]
+        if(predicted_class == 1):
+            print(f"*** Predicted class for {os.path.basename(image_path)}: FOVEA")
+        else:
+            print(f"*** Predicted class for {os.path.basename(image_path)}: NO FOVEA")
+
+        # Save visualization of results
+        base_name = os.path.splitext(os.path.basename(image_path))[0]
+        output_filename = os.path.join(output_dir, f'oct_ilm_detection_{base_name}.png')
+        visualize_results(oct_image, ilm_line, save_path=output_filename)  # Function from your script
+
+    except Exception as e:
+        print(f"Error processing {image_path}: {str(e)}")
+
+def main(folder1, folder2):
     """
     Main function to process OCT images from two folders and detect the fovea
 
@@ -320,7 +376,6 @@ def main(folder1, folder2, pattern="*.jpg"):
     else:
         print(f"Using existing output directory: {output_dir}")
 
-
     classifications = {}
 
     for image in image_paths:
@@ -335,14 +390,14 @@ def main(folder1, folder2, pattern="*.jpg"):
 
     # Process all images
     start_time = time.time()
-    results = process_multiple_images(image_paths, output_dir,classifications)
+    results = process_multiple_images(image_paths, output_dir, classifications)
     end_time = time.time()
 
     X_train, X_test, y_train, y_test = prepare_data(results)
 
-    # Train the model
+    # Train the modelA
     model, accuracy, report = train_model(X_train, X_test, y_train, y_test)
-
+    save_model(model, 'ILM_detect_model.pkl')
     print("\nModel Training Results:")
     print(f"Accuracy: {accuracy:.2f}")
     print("Classification Report:")
@@ -354,4 +409,16 @@ def main(folder1, folder2, pattern="*.jpg"):
 if __name__ == "__main__":
     folder_yes = "../dataset/fovea_yes/"
     folder_no = "../dataset/fovea_no/"
-    classifications = main(folder1=folder_yes, folder2=folder_no)
+
+
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    output_dir = os.path.join(script_dir, "predicted")
+    model_save_path = os.path.join(script_dir, "ILM_detect_model.pkl")
+    if not os.path.exists(model_save_path):
+        _, model_save, _, _ = main(folder1=folder_yes, folder2=folder_no)
+    else:
+        print("Loading existing model from", model_save_path)
+        with open(model_save_path, 'rb') as f:
+            model_save = pickle.load(f)
+    predict_image(model_save, "../dataset/healthy_yes/2002000093_20240529_93900_OS_Carl_Zeiss_Meditec_5000_512x1024x128_ORG_IMG_JPG_064.jpg",output_dir)
