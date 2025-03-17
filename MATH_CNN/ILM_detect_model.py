@@ -314,38 +314,37 @@ def save_model(model, filename):
     with open(filename, 'wb') as file:
         pickle.dump(model, file)
     print(f"Model saved to {filename}")
-def predict_image(model, image_path, output_dir):
-    """
-    Predict the class of an OCT image using the trained model.
+def predict_folder(model, folder_path, output_dir):
+    image_files = [f for f in os.listdir(folder_path) if f.endswith(('.jpg', '.png', '.jpeg'))]
+    predictions = []
 
-    Args:
-        model: Trained model object.
-        image_path: Path to the OCT image file.
-        output_dir: Directory to save processed results.
-    """
-    try:
-        # Load and preprocess the image
-        oct_image = load_oct_image(image_path)  # Function from your script
-        preprocessed_image = preprocess_oct_image(oct_image)  # Function from your script
+    for image_file in image_files:
+        image_path = os.path.join(folder_path, image_file)
+        try:
+            oct_image = load_oct_image(image_path)
+            preprocessed_image = preprocess_oct_image(oct_image)
+            ilm_line = segment_retinal_layers(preprocessed_image)
 
-        # Segment ILM layer (or other features)
-        ilm_line = segment_retinal_layers(preprocessed_image)  # Function from your script
+            prediction = model.predict(ilm_line.reshape(1, -1))[0]
+            predictions.append(prediction)
 
-        # Predict class using the trained model
-        ilm_line_reshaped = np.expand_dims(ilm_line, axis=0)  # Reshape if necessary
-        predicted_class = model.predict(ilm_line_reshaped)[0]
-        if(predicted_class == 1):
-            print(f"*** Predicted class for {os.path.basename(image_path)}: FOVEA")
-        else:
-            print(f"*** Predicted class for {os.path.basename(image_path)}: NO FOVEA")
+            base_name = os.path.splitext(image_file)[0]
 
-        # Save visualization of results
-        base_name = os.path.splitext(os.path.basename(image_path))[0]
-        output_filename = os.path.join(output_dir, f'oct_ilm_detection_{base_name}.png')
-        visualize_results(oct_image, ilm_line, save_path=output_filename)  # Function from your script
+            if(prediction == 1):
+                output_filename = os.path.join(output_dir, "FOVEA")
+            else:
+                output_filename = os.path.join(output_dir, "NOFOVEA")
 
-    except Exception as e:
-        print(f"Error processing {image_path}: {str(e)}")
+            output_filename = os.path.join(output_filename, f'oct_ilm_detection_{base_name}.png')
+            visualize_results(oct_image, ilm_line, save_path=output_filename)
+
+            print(f"Processed {image_file}: Predicted class: {prediction}")
+
+
+        except Exception as e:
+            print(f"Error processing {image_file}: {str(e)}")
+
+    return predictions
 
 def main(folder1, folder2):
     """
@@ -421,4 +420,11 @@ if __name__ == "__main__":
         print("Loading existing model from", model_save_path)
         with open(model_save_path, 'rb') as f:
             model_save = pickle.load(f)
-    predict_image(model_save, "../dataset/healthy_yes/2002000093_20240529_93900_OS_Carl_Zeiss_Meditec_5000_512x1024x128_ORG_IMG_JPG_064.jpg",output_dir)
+    # Predict on a folder of images
+    test_folder = "../dataset/healthy_yes/"  # Replace with your test folder path
+    predictions = predict_folder(model_save, test_folder, output_dir)
+
+    print("\nPrediction Summary:")
+    print(f"Total images processed: {len(predictions)}")
+    print(f"Predicted as class 'FOVEA': {predictions.count(1)}")
+    print(f"Predicted as class 'NO FOVEA': {predictions.count(0)}")
